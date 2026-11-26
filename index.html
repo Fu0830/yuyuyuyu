@@ -714,6 +714,16 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
 .bg-opacity-row label b{ color: var(--ui-ink); font-weight: 600; }
 .bg-opacity-row input[type=range]{ width: 100%; }
 .avatar-row .btn[hidden], .bg-opacity-row[hidden]{ display: none !important; }
+.bg-tools{ width:100%; max-width:468px; margin:0 auto; display:grid; gap:10px; }
+.bg-tools-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.bg-tools-row .btn{ height:38px; padding:0 14px; font-size:12.5px; }
+.bg-tools-row .btn[hidden]{ display:none !important; }
+.crop-sheet{ position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; background:hsl(0 0% 20% / .5); backdrop-filter:blur(3px); padding:16px; }
+.crop-sheet[hidden]{ display:none; }
+.crop-dialog{ width:min(440px,100%); background:#fff; color:#1d1d20; border-radius:18px; padding:14px 16px 16px; box-shadow:0 10px 40px hsl(0 0% 10% / .26); max-height:88vh; overflow:auto; }
+.crop-stage{ position:relative; border-radius:12px; overflow:hidden; background:#f6f6f8; display:flex; align-items:center; justify-content:center; height:340px; touch-action:none; }
+.crop-stage img{ display:block; max-width:100%; max-height:340px; user-select:none; -webkit-user-drag:none; }
+.crop-box{ position:absolute; border:1.5px dashed #fff; outline:1px solid rgba(214,110,140,.9); background:rgba(214,110,140,.12); pointer-events:none; }
 .tk-name h3{ font-size: 16px; font-weight: 600; letter-spacing: .07em; color: var(--tk-ink); line-height: 1.3; }
 .tk-name p{
   margin-top: 2px; font-family: var(--tk-mono); font-size: 8px; letter-spacing: .24em;
@@ -1035,15 +1045,6 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
           <button type="button" class="btn btn-ghost" id="logoClearBtn" hidden>恢复默认徽章</button>
           <input type="file" id="logoFile" accept="image/*" hidden>
         </div>
-        <div class="avatar-row">
-          <button type="button" class="btn btn-ghost" id="bgUploadBtn">上传小票背景</button>
-          <button type="button" class="btn btn-ghost" id="bgClearBtn" hidden>恢复默认背景</button>
-          <input type="file" id="bgFile" accept="image/*" hidden>
-        </div>
-        <div class="bg-opacity-row" id="bgOpacityRow" hidden>
-          <label>背景透明度 <b id="bgOpacityVal">100%</b></label>
-          <input id="bgOpacity" type="range" min="10" max="100" step="1" value="100" aria-label="背景透明度">
-        </div>
         <div class="row2">
           <div class="field">
             <label for="when">下单时间</label>
@@ -1129,6 +1130,17 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
   </div>
 
   <div class="stage-col">
+    <div class="bg-tools" id="bgTools">
+      <div class="bg-tools-row">
+        <button type="button" class="btn btn-ghost" id="bgUploadBtn">上传小票背景</button>
+        <button type="button" class="btn btn-ghost" id="bgClearBtn" hidden>恢复默认背景</button>
+        <input type="file" id="bgFile" accept="image/*" hidden>
+      </div>
+      <div class="bg-opacity-row" id="bgOpacityRow" hidden>
+        <label>背景透明度 <b id="bgOpacityVal">100%</b></label>
+        <input id="bgOpacity" type="range" min="10" max="100" step="1" value="100" aria-label="背景透明度">
+      </div>
+    </div>
     <div class="stage-head"><h2>结账</h2><span>CHECKOUT</span></div>
 
     <div class="printer" id="printer">
@@ -1178,6 +1190,24 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
       <button class="btn btn-primary save-share" id="saveShare" type="button" hidden>保存到相册</button>
       <button class="btn btn-ghost" id="saveOpen" type="button" hidden>新窗口打开</button>
       <button class="btn btn-ghost" id="saveDownload" type="button">下载文件</button>
+    </div>
+  </div>
+</div>
+
+<div class="crop-sheet" id="cropSheet" hidden>
+  <div class="crop-dialog" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+    <div class="save-head">
+      <b id="cropTitle">裁剪背景图</b>
+      <button class="save-close" id="cropClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="crop-stage" id="cropStage">
+      <img id="cropImg" alt="待裁剪背景图">
+      <div class="crop-box" id="cropBox" hidden></div>
+    </div>
+    <p class="save-tip">在图上按住拖动，框出要保留的区域；再次拖动可重选。</p>
+    <div class="save-acts">
+      <button class="btn btn-ghost" id="cropCancel" type="button">取消</button>
+      <button class="btn btn-primary" id="cropOk" type="button">确定截取</button>
     </div>
   </div>
 </div>
@@ -1980,30 +2010,125 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
       toast('已恢复默认徽章');
     });
     /* ---------- 小票背景图 ---------- */
-    function compressBg(file, done) {
-      var img = new Image();
+    /* ---------- 背景图裁剪 ---------- */
+    var cropState = { srcImg: null, natW: 0, natH: 0, url: '', stageRect: null, imgRect: null, dragging: false, sx: 0, sy: 0, done: null };
+    var cropStage = $('#cropStage'), cropImg = $('#cropImg'), cropBox = $('#cropBox');
+    function cropReloadRect() {
+      cropState.stageRect = cropStage.getBoundingClientRect();
+      cropState.imgRect = cropImg.getBoundingClientRect();
+    }
+    function cropBoxRect() {
+      var st = cropState.stageRect, ir = cropState.imgRect;
+      return { ix: ir.left - st.left, iy: ir.top - st.top, iw: ir.width, ih: ir.height };
+    }
+    function cropSetBox(x, y, w, h) {
+      cropBox.hidden = false;
+      cropBox.style.left = x + 'px';
+      cropBox.style.top = y + 'px';
+      cropBox.style.width = Math.max(0, w) + 'px';
+      cropBox.style.height = Math.max(0, h) + 'px';
+    }
+    function cropOpen(file, done) {
       var url = URL.createObjectURL(file);
+      var img = new Image();
       img.onload = function () {
-        URL.revokeObjectURL(url);
-        var max = 800;
-        var w = img.width, h = img.height;
-        if (w > max || h > max) {
-          var k = Math.min(max / w, max / h);
-          w = Math.round(w * k); h = Math.round(h * k);
-        }
-        var cv = document.createElement('canvas');
-        cv.width = w; cv.height = h;
-        cv.getContext('2d').drawImage(img, 0, 0, w, h);
-        done(cv.toDataURL('image/jpeg', 0.85));
+        cropState.srcImg = img;
+        cropState.natW = img.naturalWidth;
+        cropState.natH = img.naturalHeight;
+        cropState.url = url;
+        cropState.done = done;
+        cropImg.onload = function () {
+          $('#cropSheet').hidden = false;
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              cropReloadRect();
+              var r = cropBoxRect();
+              cropSetBox(r.ix, r.iy, r.iw, r.ih);
+            });
+          });
+        };
+        cropImg.src = url;
       };
       img.onerror = function () { URL.revokeObjectURL(url); toast('背景图读取失败，请换一张'); };
       img.src = url;
     }
+    function cropPoint(ev) {
+      var st = cropState.stageRect, ir = cropState.imgRect;
+      var px = ev.clientX - st.left, py = ev.clientY - st.top;
+      var ix = ir.left - st.left, iy = ir.top - st.top;
+      px = Math.min(ir.right - st.left, Math.max(ix, px));
+      py = Math.min(ir.bottom - st.top, Math.max(iy, py));
+      return { x: px, y: py };
+    }
+    cropStage.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault();
+      cropReloadRect();
+      var p = cropPoint(ev);
+      cropState.dragging = true;
+      cropState.sx = p.x; cropState.sy = p.y;
+      cropBox.hidden = true;
+      try { cropStage.setPointerCapture(ev.pointerId); } catch (e) {}
+    });
+    cropStage.addEventListener('pointermove', function (ev) {
+      if (!cropState.dragging) return;
+      var p = cropPoint(ev);
+      var x1 = Math.min(cropState.sx, p.x), y1 = Math.min(cropState.sy, p.y);
+      var x2 = Math.max(cropState.sx, p.x), y2 = Math.max(cropState.sy, p.y);
+      cropSetBox(x1, y1, x2 - x1, y2 - y1);
+    });
+    function cropEnd() {
+      if (!cropState.dragging) return;
+      cropState.dragging = false;
+      if (cropBox.offsetWidth < 12 || cropBox.offsetHeight < 12) {
+        var r = cropBoxRect();
+        cropSetBox(r.ix, r.iy, r.iw, r.ih);
+      }
+    }
+    cropStage.addEventListener('pointerup', cropEnd);
+    cropStage.addEventListener('pointercancel', cropEnd);
+    function cropCloseSheet() {
+      $('#cropSheet').hidden = true;
+      if (cropState.url) URL.revokeObjectURL(cropState.url);
+      cropState.url = ''; cropState.srcImg = null; cropState.done = null;
+      cropImg.removeAttribute('src');
+    }
+    function cropConfirm() {
+      var img = cropState.srcImg;
+      if (!img) { cropCloseSheet(); return; }
+      var st = cropState.stageRect, ir = cropState.imgRect;
+      var bx = cropBox.offsetLeft, by = cropBox.offsetTop;
+      var bw = cropBox.offsetWidth, bh = cropBox.offsetHeight;
+      var ix = bx - (ir.left - st.left), iy = by - (ir.top - st.top);
+      var sx = ix / ir.width * cropState.natW;
+      var sy = iy / ir.height * cropState.natH;
+      var sw = bw / ir.width * cropState.natW;
+      var sh = bh / ir.height * cropState.natH;
+      sx = Math.min(cropState.natW, Math.max(0, sx));
+      sy = Math.min(cropState.natH, Math.max(0, sy));
+      sw = Math.min(cropState.natW - sx, sw);
+      sh = Math.min(cropState.natH - sy, sh);
+      if (sw < 8 || sh < 8) { toast('选区太小，请重选'); return; }
+      var max = 800, ow = sw, oh = sh;
+      if (ow > max || oh > max) {
+        var k = Math.min(max / ow, max / oh);
+        ow = Math.round(ow * k); oh = Math.round(oh * k);
+      }
+      var cv = document.createElement('canvas');
+      cv.width = ow; cv.height = oh;
+      cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, ow, oh);
+      var dataUrl = cv.toDataURL('image/jpeg', 0.85);
+      var done = cropState.done;
+      cropCloseSheet();
+      if (done) done(dataUrl);
+    }
+    $('#cropClose').addEventListener('click', cropCloseSheet);
+    $('#cropCancel').addEventListener('click', cropCloseSheet);
+    $('#cropOk').addEventListener('click', cropConfirm);
     $('#bgUploadBtn').addEventListener('click', function () { $('#bgFile').click(); });
     $('#bgFile').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
       if (!f) return;
-      compressBg(f, function (dataUrl) {
+      cropOpen(f, function (dataUrl) {
         state.bgImg = dataUrl;
         if (!(state.bgOpacity > 0)) state.bgOpacity = 1;
         refreshBgUI(); renderSlip(); save();
