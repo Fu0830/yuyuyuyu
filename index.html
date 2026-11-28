@@ -1039,6 +1039,10 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
           <b id="clubCnView">小票机新版</b>
           <i id="clubEnView">NEW RECEIPT</i>
         </div>
+        <div class="field">
+          <label for="slogan">标语<span class="hint">店名下方那行小字</span></label>
+          <input id="slogan" class="control" autocomplete="off" spellcheck="false" placeholder="按单结清 · 谢绝挂账">
+        </div>
         <div class="avatar-row">
           <div class="avatar-preview" id="logoPreview" hidden><img id="logoPreviewImg" alt="徽章头像"></div>
           <button type="button" class="btn btn-ghost" id="logoUploadBtn">上传徽章头像</button>
@@ -1468,10 +1472,10 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
       inner = fMeta + fBrand + fHeroClassic + fTime + fCols + fLines + fSum + fChips + fQuote;
     } else if (st === 'cream' || st === 'panel') {
       /* 奶油 / 格框：角色场景在明细之后，结算走点线账目行 */
-      inner = fBrand + fMeta + fCols + fLines + fHero + fLedger + fQuote;
+      inner = fBrand + fMeta + fTime + fCols + fLines + fHero + fLedger + fQuote;
     } else {
       /* bakery / pixel：角色大图排在明细之后 */
-      inner = fBrand + fMeta + fCols + fLines + fHero + fSum + fChips + fQuote;
+      inner = fBrand + fMeta + fTime + fCols + fLines + fHero + fSum + fChips + fQuote;
     }
 
     var barInner = st === 'pixel' ? '<div class="tk-winbtns"><i></i><i></i><i class="x"></i></div>' : '';
@@ -1639,6 +1643,8 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
     m.bgOpacity = Math.min(1, Math.max(0.1, Number(m.bgOpacity) || 1));
     }
     if (['classic', 'cream', 'bakery', 'panel', 'pixel'].indexOf(m.style) < 0) m.style = 'classic';
+    m.when = toLocalInput(new Date()); /* 时间不记旧缓存 */
+    if (m.slogan === undefined) m.slogan = DEFAULTS.slogan;
     return m;
   }
   function syncForm() {
@@ -1654,6 +1660,7 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
     $('#quote').value = state.quote;
     $('#name').value = state.name;
     $('#tail').value = state.tail;
+    $('#slogan').value = state.slogan || '';
     $$('[data-cur]').forEach(function (el) { el.textContent = state.cur; });
   }
 
@@ -2170,7 +2177,7 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
       if (last) { $('[data-k=name]', last).focus(); }
     });
 
-    ['when', 'no', 'quote', 'name', 'tail'].forEach(function (id) {
+    ['when', 'no', 'quote', 'name', 'tail', 'slogan'].forEach(function (id) {
       $('#' + id).addEventListener('input', function (e) {
         state[id] = e.target.value;
         renderSlip(); save();
@@ -2271,6 +2278,7 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
     quote: '今天这份手气，记得带回家',
     name: '小满',
     tail: '',
+    slogan: '按单结清 · 谢绝挂账',
     stampOn: true,
     stampText: '小鱼',
     character: 'kitty',
